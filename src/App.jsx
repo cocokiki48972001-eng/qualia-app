@@ -139,7 +139,7 @@ function getImgs(logId) {
   return LOG_IMAGES[logId] || [svg('<rect width="400" height="300" fill="#f0f2f8"/><text x="200" y="155" fill="#8b92b0" font-size="13" text-anchor="middle" font-family="sans-serif">No Image</text>')];
 }
 
-/* ═══════════════════════════════════════════  DEMO DATA */
+/* ═══════════════════════════════════════════  DEMO DATA (初回のみ表示) */
 const DEMO_PROJECTS = [
   {
     id:"p1", name:"ポルシェ試乗体験", date:"2025-06-10", coverImage: null,
@@ -153,18 +153,6 @@ const DEMO_PROJECTS = [
       { id:"log007", category:"observation", thumbnailIdx:2, content:"隣の客が試乗前にスマホで写真を何枚も撮っていた",         emotions:["わくわく"],       score:30,  memo:"車への期待値の高さが写真行動に現れている。「乗る前から体験は始まっている」ことを再認識。", datetime:"2025-06-10T09:50:00.000Z", images:[] },
     ],
   },
-  {
-    id:"p2", name:"カフェのUI観察", date:"2025-06-08", coverImage: null,
-    logs:[
-      { id:"log101", category:"observation", thumbnailIdx:0, content:"注文端末の前で3分以上立ち止まる高齢女性",              emotions:["困惑","やるせない"], score:-60, memo:"タッチパネルの文字サイズが小さく、カテゴリ階層が深すぎる。スタッフが2回声をかけて結局口頭で注文した。", datetime:"2025-06-08T09:20:00.000Z", images:[] },
-      { id:"log102", category:"experience",  thumbnailIdx:1, content:"コーヒー受け取り口のサイネージの情報密度が高すぎる",    emotions:["困惑"],             score:-40, memo:"メニュー情報・番号呼び出し・店舗SNS・フェアの告知が同一画面に同居。視線の優先度がデザインされていない。", datetime:"2025-06-08T09:45:00.000Z", images:[] },
-      { id:"log103", category:"observation", thumbnailIdx:0, content:"若い男性がモバイルオーダーで先に番号を持って入店",      emotions:["安心"],             score:55,  memo:"モバイルオーダー利用者の動線と通常注文者の動線が交差して混雑している。空間設計がUIの変化に追いついていない。", datetime:"2025-06-08T10:10:00.000Z", images:[] },
-      { id:"log104", category:"design",      thumbnailIdx:2, content:"カウンター天板のタイル素材と照明の組み合わせ",          emotions:["わくわく","感動"],   score:70,  memo:"テラコッタ調タイルにペンダントライトの温かい光が反射して美しい。このエリアだけ別世界のような心地よさがある。", datetime:"2025-06-08T10:30:00.000Z", images:[] },
-      { id:"log105", category:"observation", thumbnailIdx:1, content:"グループ客4人が席を探して3周した後、諦めて帰った",      emotions:["やるせない","不満"], score:-75, memo:"4人席が1つもなく、2人席を2つ繋げようとしたが固定されていた。混雑時の席割りをUIで見せる仕組みがあれば防げた事象。", datetime:"2025-06-08T11:00:00.000Z", images:[] },
-      { id:"log106", category:"experience",  thumbnailIdx:0, content:"カップのサイズ感と持ちやすさ、ロゴの触感",              emotions:["満足"],             score:65,  memo:"紙カップのエンボス加工されたロゴが指に引っかかる感触が好印象。ブランドを「触覚」で伝えるという発想が面白い。", datetime:"2025-06-08T10:50:00.000Z", images:[] },
-    ],
-  },
-  { id:"p3", name:"駅ホームの案内UX", date:"2025-06-05", coverImage: null, logs:[] },
 ];
 
 /* ═══════════════════════════════════════════  HELPERS */
@@ -926,11 +914,26 @@ function DeleteProjModal({ project, onConfirm, onCancel }) {
   );
 }
 
+/* ═══════════════════════════════════════════  localStorage helpers */
+const LS_KEY = "qualia_projects_v1";
+function loadProjects() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  // 初回：デモデータを保存して返す
+  localStorage.setItem(LS_KEY, JSON.stringify(DEMO_PROJECTS));
+  return DEMO_PROJECTS;
+}
+function saveProjects(projects) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(projects)); } catch(e) {}
+}
+
 /* ═══════════════════════════════════════════  MAIN APP */
 export default function Qualia() {
-  const [projects,     setProjects]     = useState(DEMO_PROJECTS);
-  const [activeId,     setActiveId]     = useState("p1");
-  const [screen,       setScreen]       = useState("logs");
+  const [projects,     setProjects]     = useState(() => loadProjects());
+  const [activeId,     setActiveId]     = useState(null);
+  const [screen,       setScreen]       = useState("home");
   const [showForm,     setShowForm]     = useState(false);
   const [editingLog,   setEditingLog]   = useState(null);
   const [viewingLog,   setViewingLog]   = useState(null);
@@ -942,7 +945,16 @@ export default function Qualia() {
   const proj = projects.find(p=>p.id===activeId);
   const logs = proj?.logs||[];
 
-  const mut = (id,fn) => setProjects(ps=>ps.map(p=>p.id===id?{...p,...fn(p)}:p));
+  // projectsが変わるたびに自動保存
+  const setAndSave = (updater) => {
+    setProjects(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      saveProjects(next);
+      return next;
+    });
+  };
+
+  const mut = (id,fn) => setAndSave(ps=>ps.map(p=>p.id===id?{...p,...fn(p)}:p));
   const addLog    = log => { mut(activeId,p=>({logs:[...p.logs,log]})); setShowForm(false); };
   const updateLog = log => { mut(activeId,p=>({logs:p.logs.map(l=>l.id===log.id?log:l)})); setEditingLog(null); setViewingLog(null); };
   const deleteLog = id  => { mut(activeId,p=>({logs:p.logs.filter(l=>l.id!==id)})); };
@@ -950,16 +962,16 @@ export default function Qualia() {
   const createProj = () => {
     if(!newProjName.trim()) return;
     const p={id:uid(),name:newProjName,date:new Date().toISOString(),coverImage:null,logs:[]};
-    setProjects(ps=>[p,...ps]);
+    setAndSave(ps=>[p,...ps]);
     setNewProjName(""); setShowNewProj(false); setActiveId(p.id); setScreen("logs");
   };
   const confirmDelete = () => {
-    setProjects(ps=>ps.filter(p=>p.id!==deletingProj.id));
+    setAndSave(ps=>ps.filter(p=>p.id!==deletingProj.id));
     if(activeId===deletingProj.id){setActiveId(null);setScreen("home");}
     setDeletingProj(null);
   };
   const saveProjectEdit = (name, coverImage) => {
-    setProjects(ps=>ps.map(p=>p.id===editingProj.id?{...p,name,coverImage}:p));
+    setAndSave(ps=>ps.map(p=>p.id===editingProj.id?{...p,name,coverImage}:p));
     setEditingProj(null);
   };
 
